@@ -15,6 +15,7 @@ import { supabase } from "../../lib/supabase";
 import { normalizeShopDomain } from "../../lib/shopify-utils";
 
 type WebhookStatus = "active" | "inactive" | "unknown";
+type WebhookSource = "app_webhook" | "manual_sync" | "unknown";
 
 interface ConnectionStatus {
   status: "connected" | "disconnected" | "error" | "unknown";
@@ -23,11 +24,13 @@ interface ConnectionStatus {
   connectUrl?: string;
   webhookStatus: WebhookStatus;
   webhookLastEvent?: string | null;
+  webhookSource: WebhookSource;
 }
 
 interface WebhookLogRow {
   status: string;
   created_at: string | null;
+  source?: string | null;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -44,6 +47,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       status: "unknown",
       connectUrl: `${analyticsUrl}/connect/shopify`,
       webhookStatus: "unknown",
+      webhookSource: "unknown",
       webhookLastEvent: null,
     });
   }
@@ -71,6 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopDomain,
         connectUrl,
         webhookStatus: "unknown",
+        webhookSource: "unknown",
         webhookLastEvent: null,
       });
     }
@@ -98,6 +103,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopDomain,
         connectUrl,
         webhookStatus: "unknown",
+        webhookSource: "unknown",
         webhookLastEvent: null,
       });
     }
@@ -105,14 +111,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const tenantId = matchedConnection.tenant_id;
 
     let webhookStatus: WebhookStatus = "unknown";
+    let webhookSource: WebhookSource = "unknown";
     let webhookLastEvent: string | null = null;
 
     if (tenantId) {
       const { data: webhookLogRaw, error: webhookError } = await (supabase as any)
         .from("jobs_log")
-        .select("status, created_at")
+        .select("status, created_at, source")
         .eq("tenant_id", tenantId)
-        .eq("source", "shopify_webhook")
+        .in("source", ["shopify_webhook", "shopify"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -124,6 +131,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       } else if (webhookLog) {
         webhookStatus = webhookLog.status === "succeeded" ? "active" : "inactive";
         webhookLastEvent = webhookLog.created_at ?? null;
+        if (webhookLog.source === "shopify_webhook") {
+          webhookSource = "app_webhook";
+        } else if (webhookLog.source === "shopify") {
+          webhookSource = "manual_sync";
+        }
       }
     }
 
@@ -132,6 +144,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       shopDomain,
       connectUrl,
       webhookStatus,
+      webhookSource,
       webhookLastEvent,
     });
   } catch (error) {
@@ -143,6 +156,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       error: error instanceof Error ? error.message : "Unknown error",
       connectUrl,
       webhookStatus: "unknown",
+      webhookSource: "unknown",
       webhookLastEvent: null,
     });
   }
@@ -183,9 +197,17 @@ export default function IntegrationLanding() {
   const getWebhookBadge = () => {
     switch (status.webhookStatus) {
       case "active":
-        return <Badge tone="success">Webhooks Active</Badge>;
+        return (
+          <Badge tone="success">
+            {status.webhookSource === "manual_sync" ? "Sync Active" : "Webhooks Active"}
+          </Badge>
+        );
       case "inactive":
-        return <Badge tone="critical">Webhooks Failing</Badge>;
+        return (
+          <Badge tone="critical">
+            {status.webhookSource === "manual_sync" ? "Sync Failing" : "Webhooks Failing"}
+          </Badge>
+        );
       default:
         return <Badge>Webhooks Unknown</Badge>;
     }
@@ -208,9 +230,16 @@ export default function IntegrationLanding() {
             </InlineStack>
 
             <Text as="p" variant="bodySm" tone="subdued">
-              {formattedWebhookTimestamp
-                ? `Last webhook event: ${formattedWebhookTimestamp}`
-                : "No webhook events received yet."}
+              {formattedWebhookTimestamp ? (
+                <>
+                  Last {status.webhookSource === "manual_sync" ? "sync job" : "webhook"} event:{" "}
+                  {formattedWebhookTimestamp}
+                </>
+              ) : status.webhookSource === "manual_sync" ? (
+                "No manual sync jobs logged yet."
+              ) : (
+                "No webhook events received yet."
+              )}
             </Text>
 
             {status.status === "connected" && (
