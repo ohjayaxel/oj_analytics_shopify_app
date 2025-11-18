@@ -1,56 +1,68 @@
 # Webhook Setup Guide
 
-Denna guide förklarar hur du konfigurerar webhooks så att de går via Shopify-appen istället för direkt till huvudplattformen.
+Denna guide förklarar hur webhooks registreras automatiskt via `shopify.app.toml` och `shopify app deploy`.
 
-## Problem
+## Automatisk Webhook-registrering
 
-Om webhooks går direkt till huvudplattformen (`https://ohjay-dashboard.vercel.app/api/webhooks/shopify`) istället för via Shopify-appen (`https://din-shopify-app.vercel.app/webhooks/shopify`), kommer:
+Webhooks konfigureras i `shopify.app.toml` och registreras automatiskt när du kör `shopify app deploy`. **Ingen manuell konfiguration i Partner Dashboard behövs.**
 
-- ❌ Shopify-appen inte få webhook-entries i `jobs_log`
-- ❌ Webhook-statusen i Shopify-appen kommer visa "Unknown"
-- ❌ Dataflödet blir inkonsekvent (webhooks går en väg, manuell sync går en annan)
+## Konfiguration
 
-## Lösning: Registrera Webhooks via Shopify-appen
+Webhooks är redan konfigurerade i `shopify.app.toml`:
 
-### Steg 1: Verifiera Vercel URL
+```toml
+[build]
+include_config_on_deploy = true  # Registrerar webhooks automatiskt vid deploy
 
-1. Gå till ditt Vercel Dashboard
-2. Hitta din Shopify-app deployment
-3. Kopiera Production URL (t.ex. `https://oj-analytics.vercel.app`)
+[webhooks]
+api_version = "2025-10"
 
-### Steg 2: Uppdatera Webhook URL i Shopify Partner Dashboard
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create", "orders/updated" ]
+  uri = "/webhooks/shopify"
+```
 
-1. Gå till [Shopify Partner Dashboard](https://partners.shopify.com)
-2. Välj din app "OJ Analytics"
-3. Gå till **"Event subscriptions"** (eller **"Webhooks"**)
-4. Hitta webhooks för `orders/create` och `orders/updated`
-5. Uppdatera webhook-URL:en till:
+## Steg för att registrera Webhooks
+
+### Steg 1: Konfigurera SHOPIFY_APP_URL i Vercel
+
+1. Gå till Vercel Dashboard → Din app → Settings → Environment Variables
+2. Lägg till eller uppdatera `SHOPIFY_APP_URL` med din Vercel Production URL:
    ```
-   https://din-vercel-app.vercel.app/webhooks/shopify
+   SHOPIFY_APP_URL=https://din-app.vercel.app
    ```
-   (Ersätt `din-vercel-app` med din faktiska Vercel-app URL)
+   (Ersätt `din-app` med din faktiska Vercel-app URL)
 
-### Steg 3: Alternativt - Registrera via Shopify CLI
+### Steg 2: Deploya appen till Vercel
 
-Om du vill registrera webhooks automatiskt via `shopify.app.toml`:
+Appen måste vara deployad till Vercel innan webhooks kan registreras. Om du använder GitHub integration, sker deployment automatiskt vid push.
+
+### Steg 3: Registrera Webhooks via Shopify CLI
+
+Kör följande kommando för att registrera webhooks automatiskt:
 
 ```bash
 cd oj-analytics
 shopify app deploy
 ```
 
-Detta kommer registrera webhooks enligt konfigurationen i `shopify.app.toml`:
-- `orders/create` → `/webhooks/shopify`
-- `orders/updated` → `/webhooks/shopify`
+Detta kommer:
+- ✅ Läsa webhook-konfigurationen från `shopify.app.toml`
+- ✅ Registrera webhooks i Shopify med korrekt URL (`SHOPIFY_APP_URL/webhooks/shopify`)
+- ✅ Uppdatera befintliga webhooks om de redan finns
 
-**OBS:** `shopify app deploy` kräver att appen redan är deployad till Vercel och att `SHOPIFY_APP_URL` är korrekt konfigurerad.
+**OBS:** `shopify app deploy` använder `SHOPIFY_APP_URL` från environment variables för att bygga webhook-URL:erna.
 
 ### Steg 4: Verifiera Webhook-registrering
 
-1. Gå tillbaka till Shopify Partner Dashboard → Event subscriptions
-2. Verifiera att webhook-URL:erna nu pekar på din Vercel-app:
+Efter `shopify app deploy` kan du verifiera att webhooks är registrerade:
+
+1. Gå till [Shopify Partner Dashboard](https://partners.shopify.com) → Din app → Event subscriptions
+2. Verifiera att webhook-URL:erna pekar på din Vercel-app:
    - ✅ `https://din-vercel-app.vercel.app/webhooks/shopify`
    - ❌ INTE `https://ohjay-dashboard.vercel.app/api/webhooks/shopify`
+
+**OBS:** Om webhooks redan var registrerade med fel URL, kommer `shopify app deploy` att uppdatera dem automatiskt.
 
 ### Steg 5: Testa Webhooks
 
@@ -142,9 +154,22 @@ Huvudplattform (ohjay-dashboard.vercel.app)
 Supabase
 ```
 
+## Sammanfattning
+
+✅ **Webhooks konfigureras i kod** (`shopify.app.toml`)  
+✅ **Webhooks registreras automatiskt** via `shopify app deploy`  
+✅ **Ingen manuell konfiguration** i Partner Dashboard behövs  
+✅ **Webhooks uppdateras automatiskt** om de redan finns med fel URL
+
+## Krav
+
+1. ✅ `SHOPIFY_APP_URL` måste vara korrekt konfigurerad i Vercel environment variables
+2. ✅ Appen måste vara deployad till Vercel
+3. ✅ `shopify app deploy` måste köras för att registrera webhooks
+
 ## Ytterligare Information
 
 - Webhook-handlern finns i: `app/routes/webhooks.shopify.ts`
-- Webhook-konfiguration finns i: `shopify.app.toml`
-- Webhooks registreras automatiskt vid `shopify app deploy` om `include_config_on_deploy = true`
+- Webhook-konfiguration finns i: `shopify.app.toml` (rad 12-28)
+- Webhooks registreras automatiskt vid `shopify app deploy` om `include_config_on_deploy = true` (rad 10)
 
