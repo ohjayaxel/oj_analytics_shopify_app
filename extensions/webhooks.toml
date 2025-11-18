@@ -1,0 +1,15 @@
+name = "oj-analytics-webhooks"
+type = "webhook_subscription"
+# `handle` will be injected by Shopify CLI when you run `shopify app dev`
+
+# This file is a placeholder so we have an extension ready when we start
+# subscribing to Shopify order events (for example `orders/create`).
+# Once the webhook route exists, uncomment the block below and run
+# `shopify app deploy` to register it.
+
+# [subscriptions.orders_create]
+# uri = "/webhooks/orders/create"
+# version = "2024-10"
+
+
+
