@@ -14,11 +14,20 @@ import { authenticate } from "../shopify.server";
 import { supabase } from "../../lib/supabase";
 import { normalizeShopDomain } from "../../lib/shopify-utils";
 
+type WebhookStatus = "active" | "inactive" | "unknown";
+
 interface ConnectionStatus {
   status: "connected" | "disconnected" | "error" | "unknown";
   shopDomain?: string;
   error?: string;
   connectUrl?: string;
+  webhookStatus: WebhookStatus;
+  webhookLastEvent?: string | null;
+}
+
+interface WebhookLogRow {
+  status: string;
+  created_at: string | null;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -34,6 +43,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json<ConnectionStatus>({
       status: "unknown",
       connectUrl: `${analyticsUrl}/connect/shopify`,
+      webhookStatus: "unknown",
+      webhookLastEvent: null,
     });
   }
 
@@ -59,6 +70,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         error: error.message,
         shopDomain,
         connectUrl,
+        webhookStatus: "unknown",
+        webhookLastEvent: null,
       });
     }
 
@@ -84,13 +97,42 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         status: "disconnected",
         shopDomain,
         connectUrl,
+        webhookStatus: "unknown",
+        webhookLastEvent: null,
       });
+    }
+
+    const tenantId = matchedConnection.tenant_id;
+
+    let webhookStatus: WebhookStatus = "unknown";
+    let webhookLastEvent: string | null = null;
+
+    if (tenantId) {
+      const { data: webhookLogRaw, error: webhookError } = await (supabase as any)
+        .from("jobs_log")
+        .select("status, created_at")
+        .eq("tenant_id", tenantId)
+        .eq("source", "shopify_webhook")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const webhookLog = webhookLogRaw as WebhookLogRow | null;
+
+      if (webhookError) {
+        console.error("Error fetching webhook status:", webhookError);
+      } else if (webhookLog) {
+        webhookStatus = webhookLog.status === "succeeded" ? "active" : "inactive";
+        webhookLastEvent = webhookLog.created_at ?? null;
+      }
     }
 
     return json<ConnectionStatus>({
       status: "connected",
       shopDomain,
       connectUrl,
+      webhookStatus,
+      webhookLastEvent,
     });
   } catch (error) {
     console.error("Error checking connection status:", error);
@@ -100,6 +142,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       status: "error",
       error: error instanceof Error ? error.message : "Unknown error",
       connectUrl,
+      webhookStatus: "unknown",
+      webhookLastEvent: null,
     });
   }
 };
@@ -108,6 +152,9 @@ export default function IntegrationLanding() {
   const status = useLoaderData<typeof loader>();
 
   const connectUrl = status.connectUrl || "https://ohjay-dashboard.vercel.app/connect/shopify";
+  const formattedWebhookTimestamp = status.webhookLastEvent
+    ? new Date(status.webhookLastEvent).toLocaleString()
+    : null;
 
   const handleConnect = () => {
     // Break out of iframe before redirecting to OAuth
@@ -134,18 +181,38 @@ export default function IntegrationLanding() {
     }
   };
 
+  const getWebhookBadge = () => {
+    switch (status.webhookStatus) {
+      case "active":
+        return <Badge tone="success">Webhooks Active</Badge>;
+      case "inactive":
+        return <Badge tone="critical">Webhooks Failing</Badge>;
+      default:
+        return <Badge>Webhooks Unknown</Badge>;
+    }
+  };
+
   return (
     <Page>
       <TitleBar title="OJ Analytics" />
       <BlockStack gap="500">
-        <Card>
+            <Card>
           <BlockStack gap="400">
             <InlineStack align="space-between" blockAlign="center">
               <Text variant="headingLg" as="h1">
                 Shopify Integration
               </Text>
-              {getStatusBadge()}
+              <InlineStack gap="200" align="center">
+                {getStatusBadge()}
+                {getWebhookBadge()}
+              </InlineStack>
             </InlineStack>
+
+            <Text as="p" variant="bodySm" tone="subdued">
+              {formattedWebhookTimestamp
+                ? `Last webhook event: ${formattedWebhookTimestamp}`
+                : "No webhook events received yet."}
+            </Text>
 
             {status.status === "connected" && (
               <BlockStack gap="300">
@@ -155,30 +222,30 @@ export default function IntegrationLanding() {
                 </Text>
                 <Text as="p" variant="bodySm" tone="subdued">
                   To manage your connection settings, visit your analytics platform dashboard.
-                </Text>
+                  </Text>
                 <Button
                   onClick={handleConnect}
                   variant="secondary"
                 >
                   Manage Connection
                 </Button>
-              </BlockStack>
+                </BlockStack>
             )}
 
             {status.status === "disconnected" && (
               <BlockStack gap="300">
                 <Text as="p" variant="bodyMd">
                   Connect your Shopify store to start syncing data to your analytics platform.
-                </Text>
+                  </Text>
                 <Text as="p" variant="bodySm" tone="subdued">
                   You'll be redirected to your analytics platform to complete the connection.
-                </Text>
-                <Button
+                  </Text>
+                    <Button
                   onClick={handleConnect}
                   variant="primary"
-                >
+                    >
                   Connect Store
-                </Button>
+                    </Button>
               </BlockStack>
             )}
 
@@ -186,11 +253,11 @@ export default function IntegrationLanding() {
               <BlockStack gap="300">
                 <Text as="p" variant="bodyMd" tone="critical">
                   There was an error checking your connection status.
-                </Text>
+                    </Text>
                 {status.error && (
                   <Text as="p" variant="bodySm" tone="subdued">
                     {status.error}
-                  </Text>
+                    </Text>
                 )}
                 <Button
                   onClick={handleConnect}
@@ -199,31 +266,31 @@ export default function IntegrationLanding() {
                   Try Connecting Again
                 </Button>
               </BlockStack>
-            )}
-          </BlockStack>
-        </Card>
+                )}
+              </BlockStack>
+            </Card>
 
-        <Card>
-          <BlockStack gap="200">
+              <Card>
+                <BlockStack gap="200">
             <Text variant="headingMd" as="h2">
               How it works
-            </Text>
-            <BlockStack gap="200">
+                  </Text>
+                  <BlockStack gap="200">
               <Text as="p" variant="bodySm" tone="subdued">
                 <strong>1. Connect:</strong> Click "Connect Store" to link your Shopify store to
                 your analytics platform account.
-              </Text>
+                      </Text>
               <Text as="p" variant="bodySm" tone="subdued">
                 <strong>2. Sync:</strong> Once connected, your order data automatically syncs to
                 your analytics platform.
-              </Text>
+                      </Text>
               <Text as="p" variant="bodySm" tone="subdued">
                 <strong>3. Analyze:</strong> View and analyze your Shopify data in your analytics
                 platform dashboard.
-              </Text>
-            </BlockStack>
-          </BlockStack>
-        </Card>
+                      </Text>
+                  </BlockStack>
+                </BlockStack>
+              </Card>
       </BlockStack>
     </Page>
   );

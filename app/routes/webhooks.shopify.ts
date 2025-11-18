@@ -64,7 +64,7 @@ async function findTenantByShop(shopDomain: string): Promise<string> {
       // Exact match only for security
       if (existingShopDomain === normalizedDomain) {
         return conn.tenant_id as string;
-      }
+}
     }
   }
 
@@ -170,6 +170,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await recalcKpis(tenantId, orderRow.processed_at);
 
     console.log(`Webhook processed successfully: ${topic} for order ${orderRow.order_id}`);
+    try {
+      await logJob({
+        tenant_id: tenantId,
+        status: "succeeded",
+        source: "shopify_webhook",
+      });
+    } catch (logError) {
+      console.error("Unable to log webhook success", logError);
+    }
     return json({ success: true, topic, orderId: orderRow.order_id });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -188,6 +197,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           tenant_id: tenantId,
           status: "failed",
           error: errorMessage,
+          source: "shopify_webhook",
         });
       } catch (logError) {
         console.error("Unable to log webhook failure", logError);
