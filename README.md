@@ -102,6 +102,33 @@ Registrerade topics: `orders/create`, `orders/updated`. Endpointen verifierar HM
 - `kpi_daily` – aggregerad revenue/conversions/AOV per dag. `spend`, `clicks`, `roas`, `cos` hålls `null` (Shopify levererar inte kampanjdata).
 - `jobs_log` – loggposter per manuell synk/webhook-fel.
 
+## Testa Supabase-kopplingen lokalt
+
+1. Lägg in samma `DATABASE_URL` som används i Vercel i `.env.local`:
+
+   ```bash
+   DATABASE_URL="postgresql://postgres:VSVVRUfqZOJUwhN7@db.punicovacaktaszqcckp.supabase.co:6543/postgres?sslmode=require&pgbouncer=true"
+   ```
+
+2. Verifiera att Prisma kan läsa schemat:
+
+   ```bash
+   npx prisma db pull
+   ```
+
+3. Kör det medföljande testet:
+
+   ```bash
+   npm run test:db
+   ```
+
+   Scriptet (`scripts/test-db.ts`) maskerar lösenordet i loggarna, kopplar upp sig mot databasen och försöker läsa tabellen `Session`. Utdata hjälper dig avgöra om det är anslutningen eller tabellen som saknas:
+
+   - `❌ Could not connect to DB` – värd/port eller nätverk fel.
+   - `⚠️ Could not query Session table` – tabellen saknas; kör migrering eller SQL-scriptet från dokumentationen.
+
+På så sätt kan du reproducera Vercel-miljön lokalt och säkerställa att Supabase/Postgres är korrekt konfigurerad.
+
 ## Lokalt testflöde
 
 1. Starta `shopify app dev` och installera appen i dev-butiken.
