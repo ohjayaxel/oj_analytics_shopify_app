@@ -149,6 +149,20 @@ På så sätt kan du reproducera Vercel-miljön lokalt och säkerställa att Sup
 - Skapa Supabase policies om ni inte använder service-role-nyckeln.
 - Registrera webhooks genom `shopify app deploy` eller `shopify app webhook trigger` för test.
 
+### Debug i Vercel
+
+1. Pusha ändringarna till `main` → trigga en ny deployment.
+2. Öppna Vercel-logs och leta efter:
+   - `[debug] DATABASE_URL defined: true/false`
+   - `[debug] DATABASE_URL host: ...`
+3. Besök `/debug/db` i production. Du ska få:
+
+```json
+{ "ok": true, "sessionCount": 1 }
+```
+
+Om det står `ok: false` – se loggarna (`[debug] Vercel DB ERROR: ...`) för exakt fel (t.ex. saknad env-variabel eller tabell).
+
 ## Felsökning
 
 - **403 från Shopify App Management:** säkerställ att rätt partnerkonto är inloggat innan `shopify app dev`.
