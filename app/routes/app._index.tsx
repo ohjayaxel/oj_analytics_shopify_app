@@ -15,7 +15,6 @@ import { supabase } from "../../lib/supabase";
 import { normalizeShopDomain } from "../../lib/shopify-utils";
 
 type WebhookStatus = "active" | "inactive" | "unknown";
-type WebhookSource = "app_webhook" | "manual_sync" | "unknown";
 
 interface ConnectionStatus {
   status: "connected" | "disconnected" | "error" | "unknown";
@@ -24,13 +23,13 @@ interface ConnectionStatus {
   connectUrl?: string;
   webhookStatus: WebhookStatus;
   webhookLastEvent?: string | null;
-  webhookSource: WebhookSource;
+  hasManualSync?: boolean;
+  lastManualSync?: string | null;
 }
 
 interface WebhookLogRow {
   status: string;
   created_at: string | null;
-  source?: string | null;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -47,8 +46,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       status: "unknown",
       connectUrl: `${analyticsUrl}/connect/shopify`,
       webhookStatus: "unknown",
-      webhookSource: "unknown",
       webhookLastEvent: null,
+      hasManualSync: false,
     });
   }
 
@@ -75,8 +74,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopDomain,
         connectUrl,
         webhookStatus: "unknown",
-        webhookSource: "unknown",
         webhookLastEvent: null,
+        hasManualSync: false,
       });
     }
 
@@ -103,23 +102,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         shopDomain,
         connectUrl,
         webhookStatus: "unknown",
-        webhookSource: "unknown",
         webhookLastEvent: null,
+        hasManualSync: false,
       });
     }
 
     const tenantId = matchedConnection.tenant_id;
 
     let webhookStatus: WebhookStatus = "unknown";
-    let webhookSource: WebhookSource = "unknown";
     let webhookLastEvent: string | null = null;
+    let hasManualSync = false;
+    let lastManualSync: string | null = null;
 
     if (tenantId) {
+      // Only check for real webhooks (not manual syncs)
       const { data: webhookLogRaw, error: webhookError } = await (supabase as any)
         .from("jobs_log")
-        .select("status, created_at, source")
+        .select("status, created_at")
         .eq("tenant_id", tenantId)
-        .in("source", ["shopify_webhook", "shopify"])
+        .eq("source", "shopify_webhook")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -131,11 +132,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       } else if (webhookLog) {
         webhookStatus = webhookLog.status === "succeeded" ? "active" : "inactive";
         webhookLastEvent = webhookLog.created_at ?? null;
-        if (webhookLog.source === "shopify_webhook") {
-          webhookSource = "app_webhook";
-        } else if (webhookLog.source === "shopify") {
-          webhookSource = "manual_sync";
-        }
+      }
+
+      // Check for manual syncs separately (for info only, not for webhook status)
+      const { data: manualSyncLogRaw } = await (supabase as any)
+        .from("jobs_log")
+        .select("created_at")
+        .eq("tenant_id", tenantId)
+        .eq("source", "shopify")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (manualSyncLogRaw) {
+        hasManualSync = true;
+        lastManualSync = manualSyncLogRaw.created_at ?? null;
       }
     }
 
@@ -144,8 +155,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       shopDomain,
       connectUrl,
       webhookStatus,
-      webhookSource,
       webhookLastEvent,
+      hasManualSync,
+      lastManualSync,
     });
   } catch (error) {
     console.error("Error checking connection status:", error);
@@ -156,8 +168,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       error: error instanceof Error ? error.message : "Unknown error",
       connectUrl,
       webhookStatus: "unknown",
-      webhookSource: "unknown",
       webhookLastEvent: null,
+      hasManualSync: false,
     });
   }
 };
@@ -197,17 +209,9 @@ export default function IntegrationLanding() {
   const getWebhookBadge = () => {
     switch (status.webhookStatus) {
       case "active":
-        return (
-          <Badge tone="success">
-            {status.webhookSource === "manual_sync" ? "Sync Active" : "Webhooks Active"}
-          </Badge>
-        );
+        return <Badge tone="success">Webhooks Active</Badge>;
       case "inactive":
-        return (
-          <Badge tone="critical">
-            {status.webhookSource === "manual_sync" ? "Sync Failing" : "Webhooks Failing"}
-          </Badge>
-        );
+        return <Badge tone="critical">Webhooks Failing</Badge>;
       default:
         return <Badge>Webhooks Unknown</Badge>;
     }
@@ -230,15 +234,14 @@ export default function IntegrationLanding() {
             </InlineStack>
 
             <Text as="p" variant="bodySm" tone="subdued">
-              {formattedWebhookTimestamp ? (
+              {formattedWebhookTimestamp
+                ? `Last webhook event: ${formattedWebhookTimestamp}`
+                : "No webhook events received yet."}
+              {status.hasManualSync && status.lastManualSync && (
                 <>
-                  Last {status.webhookSource === "manual_sync" ? "sync job" : "webhook"} event:{" "}
-                  {formattedWebhookTimestamp}
+                  {" "}
+                  (Last manual sync: {new Date(status.lastManualSync).toLocaleString()})
                 </>
-              ) : status.webhookSource === "manual_sync" ? (
-                "No manual sync jobs logged yet."
-              ) : (
-                "No webhook events received yet."
               )}
             </Text>
 
