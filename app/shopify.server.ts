@@ -7,6 +7,19 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
+const dbUrl = process.env.DATABASE_URL;
+console.log("[debug] DATABASE_URL defined:", !!dbUrl);
+if (dbUrl) {
+  try {
+    const parsed = new URL(dbUrl);
+    console.log("[debug] DATABASE_URL host:", parsed.host);
+  } catch (error) {
+    console.log("[debug] DATABASE_URL is not a valid URL");
+  }
+} else {
+  console.log("[debug] DATABASE_URL is missing");
+}
+
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
