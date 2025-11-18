@@ -29,7 +29,8 @@ interface ConnectionStatus {
 
 interface WebhookLogRow {
   status: string;
-  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -118,10 +119,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // Only check for real webhooks (not manual syncs)
       const { data: webhookLogRaw, error: webhookError } = await (supabase as any)
         .from("jobs_log")
-        .select("status, created_at")
+        .select("status, started_at, finished_at")
         .eq("tenant_id", tenantId)
         .eq("source", "shopify_webhook")
-        .order("created_at", { ascending: false })
+        .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -131,22 +132,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         console.error("Error fetching webhook status:", webhookError);
       } else if (webhookLog) {
         webhookStatus = webhookLog.status === "succeeded" ? "active" : "inactive";
-        webhookLastEvent = webhookLog.created_at ?? null;
+        // Use finished_at if available, otherwise started_at
+        webhookLastEvent = webhookLog.finished_at ?? webhookLog.started_at ?? null;
       }
 
       // Check for manual syncs separately (for info only, not for webhook status)
       const { data: manualSyncLogRaw } = await (supabase as any)
         .from("jobs_log")
-        .select("created_at")
+        .select("started_at, finished_at")
         .eq("tenant_id", tenantId)
         .eq("source", "shopify")
-        .order("created_at", { ascending: false })
+        .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (manualSyncLogRaw) {
         hasManualSync = true;
-        lastManualSync = manualSyncLogRaw.created_at ?? null;
+        // Use finished_at if available, otherwise started_at
+        lastManualSync = manualSyncLogRaw.finished_at ?? manualSyncLogRaw.started_at ?? null;
       }
     }
 
