@@ -157,14 +157,13 @@ export default function IntegrationLanding() {
     : null;
 
   const handleConnect = () => {
-    // Break out of iframe before redirecting to OAuth
-    // This is required because Shopify blocks OAuth authorization page in iframes
-    if (window.top && window.top !== window.self) {
-      // We're in an iframe, break out to top-level
-      window.top.location.href = connectUrl;
-    } else {
-      // Not in iframe, redirect normally
-      window.location.href = connectUrl;
+    const popup = window.open(connectUrl, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      if (window.top && window.top !== window.self) {
+        window.top.location.href = connectUrl;
+      } else {
+        window.location.href = connectUrl;
+      }
     }
   };
 
