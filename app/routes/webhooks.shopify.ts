@@ -124,9 +124,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shopDomain = request.headers.get("x-shopify-shop-domain");
   const topic = request.headers.get("x-shopify-topic");
 
+  // Log incoming webhook for debugging
+  console.log("[webhook] Received webhook", {
+    shop: shopDomain,
+    topic,
+    hasHmac: !!hmac,
+    bodyLength: rawBody.length,
+  });
+
   // Verify HMAC signature
   if (!verifyWebhook(rawBody, hmac)) {
-    console.error("Webhook HMAC verification failed", {
+    console.error("[webhook] HMAC verification failed", {
       shop: shopDomain,
       topic,
       hasHmac: !!hmac,
@@ -135,10 +143,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (!shopDomain) {
+    console.error("[webhook] Missing shop header");
     return json({ message: "Missing shop header" }, { status: 400 });
   }
 
   if (!topic) {
+    console.error("[webhook] Missing topic header", { shop: shopDomain });
     return json({ message: "Missing topic header" }, { status: 400 });
   }
 
@@ -169,7 +179,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Recalculate KPIs for the order date
     await recalcKpis(tenantId, orderRow.processed_at);
 
-    console.log(`Webhook processed successfully: ${topic} for order ${orderRow.order_id}`);
+    console.log(`[webhook] Processed successfully: ${topic} for order ${orderRow.order_id}`, {
+      tenantId,
+      shop: shopDomain,
+      orderId: orderRow.order_id,
+    });
     try {
       await logJob({
         tenant_id: tenantId,
@@ -177,12 +191,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         source: "shopify_webhook",
       });
     } catch (logError) {
-      console.error("Unable to log webhook success", logError);
+      console.error("[webhook] Unable to log webhook success", logError);
     }
     return json({ success: true, topic, orderId: orderRow.order_id });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Webhook handling failed", {
+    console.error("[webhook] Handling failed", {
       shop: shopDomain,
       topic,
       tenantId,
