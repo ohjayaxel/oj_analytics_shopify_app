@@ -17,7 +17,8 @@
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
-    "test:db": "node --loader ts-node/esm scripts/test-db.ts"
+    "test:db": "node --loader ts-node/esm scripts/test-db.ts",
+    "verify:webhooks": "node --loader ts-node/esm scripts/verify-webhooks.ts"
   },
   "type": "module",
   "engines": {
