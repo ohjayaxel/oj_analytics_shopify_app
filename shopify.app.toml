@@ -2,7 +2,7 @@
 
 client_id = "67673cdd3c82f441029e0ec2381e99e6"
 name = "OJ Analytics"
-application_url = "https://example.com"
+application_url = "https://oj-analytics-shopify-app-ebpu.vercel.app"
 embedded = true
 
 [build]
